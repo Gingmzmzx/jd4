@@ -246,6 +246,7 @@ def read_legacy_cases(config, open):
     for line in islice(csv.reader(config, delimiter='|'), num_cases):
         input, output, time_str, score_str = line[:4]
         time_limit = int(float(time_str) * 1000000000)
+        time_limit = min(time_limit, 10 * 1000000000)  # 限制最高不超过10s
         try:
             memory_bytes = int(float(line[4]) * 1024)
         except (IndexError, ValueError):
