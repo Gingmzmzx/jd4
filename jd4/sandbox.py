@@ -62,16 +62,21 @@ def _handle_reset_child():
 def _handle_compile(compiler_file, compiler_args, output_file, cgroup_file):
     pid = fork()
     if not pid:
-        chdir('/out')
-        os_close(STDIN_FILENO)
-        if output_file:
-            fd = os_open(output_file, O_WRONLY)
-            dup2(fd, STDOUT_FILENO)
-            dup2(fd, STDERR_FILENO)
-            os_close(fd)
-        if cgroup_file:
-            enter_cgroup(cgroup_file)
-        execve(compiler_file, compiler_args, SPAWN_ENV)
+        # This is a fork child: it must never fall back into the request loop of
+        # the sandbox process, which would answer the same request twice.
+        try:
+            chdir('/out')
+            os_close(STDIN_FILENO)
+            if output_file:
+                fd = os_open(output_file, O_WRONLY)
+                dup2(fd, STDOUT_FILENO)
+                dup2(fd, STDERR_FILENO)
+                os_close(fd)
+            if cgroup_file:
+                enter_cgroup(cgroup_file)
+            execve(compiler_file, compiler_args, SPAWN_ENV)
+        except:
+            exit(1)
     return wait_and_reap_zombies(pid)
 
 
@@ -84,29 +89,33 @@ def _handle_execute(execute_file,
                     cgroup_file):
     pid = fork()
     if not pid:
-        chdir('/in/package')
-        if stdin_file:
-            fd = os_open(stdin_file, O_RDONLY)
-            dup2(fd, STDIN_FILENO)
-            os_close(fd)
-        if stdout_file:
-            fd = os_open(stdout_file, O_WRONLY)
-            dup2(fd, STDOUT_FILENO)
-            os_close(fd)
-        if stderr_file:
-            fd = os_open(stderr_file, O_WRONLY)
-            dup2(fd, STDERR_FILENO)
-            os_close(fd)
-        if extra_file:
-            fd = os_open(extra_file, O_RDONLY)
-            if fd == EXTRA_FILENO:
-                set_inheritable(fd, True)
-            else:
-                dup2(fd, EXTRA_FILENO)
+        # See _handle_compile: a fork child must not answer the request itself.
+        try:
+            chdir('/in/package')
+            if stdin_file:
+                fd = os_open(stdin_file, O_RDONLY)
+                dup2(fd, STDIN_FILENO)
                 os_close(fd)
-        if cgroup_file:
-            enter_cgroup(cgroup_file)
-        execve(execute_file, execute_args, SPAWN_ENV)
+            if stdout_file:
+                fd = os_open(stdout_file, O_WRONLY)
+                dup2(fd, STDOUT_FILENO)
+                os_close(fd)
+            if stderr_file:
+                fd = os_open(stderr_file, O_WRONLY)
+                dup2(fd, STDERR_FILENO)
+                os_close(fd)
+            if extra_file:
+                fd = os_open(extra_file, O_RDONLY)
+                if fd == EXTRA_FILENO:
+                    set_inheritable(fd, True)
+                else:
+                    dup2(fd, EXTRA_FILENO)
+                    os_close(fd)
+            if cgroup_file:
+                enter_cgroup(cgroup_file)
+            execve(execute_file, execute_args, SPAWN_ENV)
+        except:
+            exit(1)
     return wait_and_reap_zombies(pid)
 
 _HANDLERS = {
